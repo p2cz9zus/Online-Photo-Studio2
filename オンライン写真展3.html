@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>温度 - Online Photo Exhibition</title>
+    <style>
+        body { margin: 0; background: #000; color: #fff; font-family: serif; overflow-x: hidden; }
+        canvas { display: block; position: fixed; top: 0; left: 0; z-index: -1; pointer-events: none; }
+        
+        /* UIレイヤー */
+        section { height: 100vh; display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; }
+        .hero h1 { font-size: clamp(4rem, 10vw, 8rem); letter-spacing: 1.5rem; transition: color 1s; }
+        .gallery-space { height: 400vh; } /* スクロール用の余白 */
+        .about { padding: 100px 20px; line-height: 2; background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body>
+
+    <section class="hero">
+        <h1>温度</h1>
+        <p>Scroll to feel the atmosphere.</p>
+    </section>
+
+    <div class="gallery-space"></div>
+
+    <section class="about">
+        <h2>About Us</h2>
+        <p>目に見えない熱量を、光と影で描き出す。<br>
+        この展示会では、01から08までの異なる「温度」を体験いただけます。</p>
+    </section>
+
+    <div id="container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.7.1/gsap.min.js"></script>
+
+    <script>
+        // --- 1. データ定義 ---
+        const photoData = [
+            { color: '#ff4500', fog: '#1a0500' }, { color: '#00f2ff', fog: '#000d1a' },
+            { color: '#ffcc00', fog: '#1a1500' }, { color: '#ffffff', fog: '#101010' },
+            { color: '#ff2200', fog: '#200500' }, { color: '#4444ff', fog: '#000020' },
+            { color: '#ffaa88', fog: '#1a100a' }, { color: '#00ffcc', fog: '#001a15' }
+        ];
+
+        // --- 2. Three.js セットアップ (ここにご質問の部分が含まれています) ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.getElementById('container').appendChild(renderer.domElement);
+
+        scene.fog = new THREE.FogExp2(photoData[0].fog, 0.15);
+        renderer.setClearColor(scene.fog.color);
+
+        // --- 3. 画像の読み込み (修正版) ---
+const loader = new THREE.TextureLoader();
+const textures = [];
+let loadedCount = 0;
+
+for (let i = 1; i <= 8; i++) {
+    const path = `img/0${i}.jpg`;
+    loader.load(
+        path,
+        (tex) => {
+            // 読み込み成功時
+            textures[i - 1] = tex;
+            loadedCount++;
+            if (i === 1) material.uniforms.uTexture.value = tex;
+            console.log(`${path} 読み込み完了`);
+        },
+        undefined,
+        (err) => {
+            // 失敗時
+            console.error(`${path} が見つかりません。パスを確認してください。`);
+        }
+    );
+}
+
+        // --- 4. マテリアルとメッシュ ---
+        const geometry = new THREE.PlaneGeometry(5, 7, 64, 64);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uTexture: { value: textures[0] },
+                uDistortion: { value: 0 },
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                uniform float uTime;
+                uniform float uDistortion;
+                void main() {
+                    vUv = uv;
+                    vec3 pos = position;
+                    pos.z += sin(pos.y * 2.0 + uTime) * (0.1 + uDistortion);
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                varying vec2 vUv;
+                uniform sampler2D uTexture;
+                void main() {
+                    gl_FragColor = texture2D(uTexture, vUv);
+                }
+            `,
+            transparent: true
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+        camera.position.z = 8;
+
+        // --- 5. スクロール処理 ---
+        let currentIndex = 0;
+        window.addEventListener('scroll', () => {
+            const scrollTotal = document.body.scrollHeight - window.innerHeight;
+            const progress = Math.max(0, Math.min(1, window.scrollY / scrollTotal));
+
+            mesh.rotation.y = (progress - 0.5) * 0.5;
+            
+            const newIndex = Math.min(Math.floor(progress * photoData.length * 1.2), photoData.length - 1);
+
+            if (newIndex !== currentIndex) {
+                currentIndex = newIndex;
+                const data = photoData[currentIndex];
+
+                gsap.to(scene.fog.color, {
+                    duration: 1.5,
+                    r: new THREE.Color(data.fog).r, g: new THREE.Color(data.fog).g, b: new THREE.Color(data.fog).b,
+                    onUpdate: () => renderer.setClearColor(scene.fog.color)
+                });
+
+                gsap.to("h1", { color: data.color, duration: 1.5 });
+
+                gsap.to(material.uniforms.uDistortion, {
+                    value: 1.2, duration: 0.4,
+                    onComplete: () => {
+                        material.uniforms.uTexture.value = textures[currentIndex];
+                        gsap.to(material.uniforms.uDistortion, { value: 0, duration: 0.8 });
+                    }
+                });
+            }
+        });
+
+        // --- 6. ループ ---
+        function animate() {
+            requestAnimationFrame(animate);
+            material.uniforms.uTime.value += 0.03;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
