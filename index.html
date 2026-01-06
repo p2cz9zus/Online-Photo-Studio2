@@ -125,9 +125,11 @@
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
+        // 出力される色を原画に忠実にする
+        renderer.outputEncoding = THREE.sRGBEncoding;
         document.getElementById('container').appendChild(renderer.domElement);
 
-        // 背景色は維持しつつ、写真に影響を与えるフォグ（霧）を削除
+        // 背景色は維持
         renderer.setClearColor(photoData[0].fog);
 
         const loader = new THREE.TextureLoader();
@@ -138,8 +140,7 @@
             let loadedCount = 0;
             for (let i = 1; i <= 8; i++) {
                 loader.load(`./img/0${i}.jpg`, (texture) => {
-                    // 写真の発色を本来の状態にするための設定
-                    texture.encoding = THREE.sRGBEncoding; 
+                    texture.encoding = THREE.sRGBEncoding;
                     textures[i - 1] = texture;
                     loadedCount++;
                     if (loadedCount === 1 || (i === 1 && !mesh)) {
@@ -155,10 +156,10 @@
             const baseHeight = 7;
             const geometry = new THREE.PlaneGeometry(baseHeight * aspect, baseHeight);
             
-            // 透明度の制限（opacity: 0）をやめ、最初から1（100%表示）に設定
+            // エフェクト（透明度やライティング）の影響を受けない設定
             const material = new THREE.MeshBasicMaterial({ 
                 map: texture,
-                transparent: true,
+                transparent: false, // 透明度は扱わない
                 opacity: 1 
             });
             
@@ -176,9 +177,9 @@
             const scrollTotal = document.body.scrollHeight - window.innerHeight;
             const progress = window.scrollY / scrollTotal;
 
-            // 動きの演出のみ残し、不透明度のフェードを削除
-            mesh.rotation.y = (progress - 0.5) * 0.3;
-            mesh.position.y = (progress - 0.5) * -1.5;
+            // 傾きや位置の移動（エフェクト）を完全に削除
+            mesh.rotation.y = 0;
+            mesh.position.y = 0;
 
             const newIndex = Math.min(Math.floor(progress * photoData.length), photoData.length - 1);
 
@@ -186,20 +187,16 @@
                 currentIndex = newIndex;
                 const data = photoData[currentIndex];
 
-                // 背景色とタイトルの色変更（写真には干渉しません）
-                gsap.to(renderer.getClearColor(new THREE.Color()), {
-                    duration: 1.5,
-                    r: new THREE.Color(data.fog).r, 
-                    g: new THREE.Color(data.fog).g, 
-                    b: new THREE.Color(data.fog).b,
-                    onUpdate: function() { renderer.setClearColor(this.targets()[0]); }
-                });
-                gsap.to("#main-title", { color: data.color, duration: 0.8 });
+                // 背景とタイトルの色のみ変更
+                renderer.setClearColor(data.fog);
+                document.getElementById("main-title").style.color = data.color;
 
-                // 写真の切り替え
+                // 写真を瞬時に切り替え
                 mesh.material.map = textures[currentIndex];
                 const newAspect = textures[currentIndex].image.width / textures[currentIndex].image.height;
-                mesh.scale.set(newAspect / (textures[0].image.width / textures[0].image.height), 1, 1);
+                const baseHeight = 7;
+                mesh.geometry.dispose();
+                mesh.geometry = new THREE.PlaneGeometry(baseHeight * newAspect, baseHeight);
             }
         });
 
