@@ -114,77 +114,114 @@
 
     <script>
         const photoData = [
-            { color: '#FF3D00', fog: '#1A0500' }, { color: '#00E5FF', fog: '#000D1A' },
-            { color: '#FFD600', fog: '#1A1500' }, { color: '#FFFFFF', fog: '#0A0A0A' },
-            { color: '#D50000', fog: '#200500' }, { color: '#2979FF', fog: '#000520' },
-            { color: '#FFAB91', fog: '#1A0D08' }, { color: '#1DE9B6', fog: '#001A15' }
-        ];
+    { color: '#FF3D00', fog: '#1A0500' }, { color: '#00E5FF', fog: '#000D1A' },
+    { color: '#FFD600', fog: '#1A1500' }, { color: '#FFFFFF', fog: '#0A0A0A' },
+    { color: '#D50000', fog: '#200500' }, { color: '#2979FF', fog: '#000520' },
+    { color: '#FFAB91', fog: '#1A0D08' }, { color: '#1DE9B6', fog: '#001A15' }
+];
 
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
-        document.getElementById('container').appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.getElementById('container').appendChild(renderer.domElement);
 
-        scene.fog = new THREE.FogExp2(photoData[0].fog, 0.12);
-        renderer.setClearColor(scene.fog.color);
+scene.fog = new THREE.FogExp2(photoData[0].fog, 0.12);
+renderer.setClearColor(scene.fog.color);
 
-        const loader = new THREE.TextureLoader();
-        const textures = [];
-        for (let i = 1; i <= 8; i++) {
-            textures.push(loader.load(`./img/0${i}.jpg`));
-        }
+const loader = new THREE.TextureLoader();
+const textures = [];
+let mesh;
 
-        const geometry = new THREE.PlaneGeometry(5.5, 7.7);
-        const material = new THREE.MeshBasicMaterial({ map: textures[0], transparent: true, opacity: 0 });
-        const mesh = new THREE.Mesh(geometry, material);
-        scene.add(mesh);
-        camera.position.z = 11;
+// 画像読み込みと比率の自動計算
+function loadImages() {
+    let loadedCount = 0;
+    for (let i = 1; i <= 8; i++) {
+        loader.load(`./img/0${i}.jpg`, (texture) => {
+            textures[i - 1] = texture;
+            loadedCount++;
 
-        let currentIndex = 0;
-        window.addEventListener('scroll', () => {
-            const scrollTotal = document.body.scrollHeight - window.innerHeight;
-            const progress = window.scrollY / scrollTotal;
-
-            mesh.rotation.y = (progress - 0.5) * 0.3;
-            mesh.position.y = (progress - 0.5) * -1.5;
-
-            // 解説セクションを過ぎたら写真を表示
-            if (progress > 0.22) {
-                gsap.to(material, { opacity: 1, duration: 0.8 });
-            } else {
-                gsap.to(material, { opacity: 0, duration: 0.8 });
-            }
-
-            const newIndex = Math.min(Math.floor(progress * photoData.length), photoData.length - 1);
-
-            if (newIndex !== currentIndex) {
-                currentIndex = newIndex;
-                const data = photoData[currentIndex];
-
-                gsap.to(scene.fog.color, {
-                    duration: 1.5,
-                    r: new THREE.Color(data.fog).r, g: new THREE.Color(data.fog).g, b: new THREE.Color(data.fog).b,
-                    onUpdate: () => renderer.setClearColor(scene.fog.color)
-                });
-
-                gsap.to("#main-title", { color: data.color, duration: 0.8 });
-                material.map = textures[currentIndex];
+            // 最初の画像が読み込まれたらメッシュを作成
+            if (loadedCount === 1 || (i === 1 && !mesh)) {
+                createPhotoMesh(texture);
             }
         });
+    }
+}
 
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-        }
-        animate();
+function createPhotoMesh(texture) {
+    if (mesh) scene.remove(mesh);
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+    // 画像の元の比率を計算 (幅 / 高さ)
+    const aspect = texture.image.width / texture.image.height;
+    
+    // 基本の表示サイズ（高さ7を基準に幅を自動決定）
+    const baseHeight = 7;
+    const geometry = new THREE.PlaneGeometry(baseHeight * aspect, baseHeight);
+    
+    const material = new THREE.MeshBasicMaterial({ 
+        map: texture, 
+        transparent: true, 
+        opacity: 0 
+    });
+    
+    mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+}
+
+loadImages();
+camera.position.z = 11;
+
+let currentIndex = 0;
+window.addEventListener('scroll', () => {
+    if (!mesh) return;
+
+    const scrollTotal = document.body.scrollHeight - window.innerHeight;
+    const progress = window.scrollY / scrollTotal;
+
+    mesh.rotation.y = (progress - 0.5) * 0.3;
+    mesh.position.y = (progress - 0.5) * -1.5;
+
+    if (progress > 0.22) {
+        gsap.to(mesh.material, { opacity: 1, duration: 0.8 });
+    } else {
+        gsap.to(mesh.material, { opacity: 0, duration: 0.8 });
+    }
+
+    const newIndex = Math.min(Math.floor(progress * photoData.length), photoData.length - 1);
+
+    if (newIndex !== currentIndex && textures[newIndex]) {
+        currentIndex = newIndex;
+        const data = photoData[currentIndex];
+
+        // フォグとタイトルの色変更
+        gsap.to(scene.fog.color, {
+            duration: 1.5,
+            r: new THREE.Color(data.fog).r, g: new THREE.Color(data.fog).g, b: new THREE.Color(data.fog).b,
+            onUpdate: () => renderer.setClearColor(scene.fog.color)
         });
+        gsap.to("#main-title", { color: data.color, duration: 0.8 });
+
+        // 画像の切り替えと比率の再適用
+        mesh.material.map = textures[currentIndex];
+        const newAspect = textures[currentIndex].image.width / textures[currentIndex].image.height;
+        // ジオメトリのスケールを調整して比率を維持
+        mesh.scale.set(newAspect / (textures[0].image.width / textures[0].image.height), 1, 1);
+    }
+});
+
+function animate() {
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
     </script>
 </body>
 </html>
